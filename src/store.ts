@@ -33,6 +33,7 @@ interface WalletActions {
   refreshBalance: () => Promise<void>;
   sendTransaction: (to: string, amount: string) => Promise<string>;
   setNetwork: (network: NetworkConfig) => Promise<void>;
+  setCurrentAddress: (address: string) => Promise<void>;
 }
 
 export const useWalletStore = create<WalletState & WalletActions>((set, get) => ({
@@ -129,6 +130,12 @@ export const useWalletStore = create<WalletState & WalletActions>((set, get) => 
   setNetwork: async (network) => {
     await invoke('set_network', { network });
     set({ network });
+    get().refreshBalance();
+  },
+
+  setCurrentAddress: async (address) => {
+    await invoke('set_current_address', { address });
+    set({ currentAddress: address });
     get().refreshBalance();
   },
 }));

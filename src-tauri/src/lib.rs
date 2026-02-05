@@ -288,6 +288,12 @@ fn set_network(network: NetworkConfig, state: State<'_, WalletState>) {
     *net = network;
 }
 
+#[tauri::command]
+fn set_current_address(address: String, state: State<'_, WalletState>) {
+    let mut current = state.current_address.lock().unwrap();
+    *current = Some(address);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -304,6 +310,7 @@ pub fn run() {
             send_transaction,
             get_wallets,
             get_current_address,
+            set_current_address,
             is_unlocked,
             unlock,
             lock,

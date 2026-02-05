@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { useWalletStore } from '../store';
-import { RefreshCw, Send, Download, Lock, Copy, Check, Settings } from 'lucide-react';
+import { RefreshCw, Send, Download, Lock, Copy, Check, Settings, Users } from 'lucide-react';
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface HomeProps {
-  onNavigate: (page: 'home' | 'send' | 'receive' | 'settings') => void;
+  onNavigate: (page: 'home' | 'send' | 'receive' | 'settings' | 'accounts') => void;
 }
 
 export default function Home({ onNavigate }: HomeProps) {
@@ -73,6 +73,9 @@ export default function Home({ onNavigate }: HomeProps) {
           <button onClick={refreshBalance} className="p-2 hover:bg-gray-100 rounded-lg">
             <RefreshCw className="w-5 h-5 text-gray-600" />
           </button>
+          <button onClick={() => onNavigate('accounts')} className="p-2 hover:bg-gray-100 rounded-lg">
+            <Users className="w-5 h-5 text-gray-600" />
+          </button>
           <button onClick={() => onNavigate('settings')} className="p-2 hover:bg-gray-100 rounded-lg">
             <Settings className="w-5 h-5 text-gray-600" />
           </button>
@@ -100,13 +103,21 @@ export default function Home({ onNavigate }: HomeProps) {
           <p className="text-3xl font-bold mt-1">
             {parseFloat(balance).toFixed(4)} {network.symbol}
           </p>
-          <button
-            onClick={copyAddress}
-            className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-white/20 rounded-full text-sm hover:bg-white/30"
-          >
-            {currentAddress && formatAddress(currentAddress)}
-            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-          </button>
+          <div className="mt-4 flex items-center gap-2">
+            <button
+              onClick={() => onNavigate('accounts')}
+              className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 rounded-full text-sm hover:bg-white/30"
+            >
+              <Users className="w-3 h-3" />
+              {currentAddress && formatAddress(currentAddress)}
+            </button>
+            <button
+              onClick={copyAddress}
+              className="p-1.5 bg-white/20 rounded-full hover:bg-white/30"
+            >
+              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+            </button>
+          </div>
         </div>
       </div>
 
