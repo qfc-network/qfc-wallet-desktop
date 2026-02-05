@@ -414,6 +414,60 @@ fn get_network(state: State<'_, WalletState>) -> NetworkConfig {
 }
 
 #[tauri::command]
+fn export_mnemonic(
+    password: String,
+    state: State<'_, WalletState>,
+) -> Result<String, String> {
+    let encrypted_mnemonic = state.encrypted_mnemonic.lock().unwrap()
+        .clone()
+        .ok_or("No wallet created")?;
+
+    // Verify password and decrypt mnemonic
+    let mnemonic = decrypt_data(&encrypted_mnemonic, &password)?;
+    Ok(mnemonic)
+}
+
+#[tauri::command]
+fn export_private_key(
+    address: String,
+    password: String,
+    state: State<'_, WalletState>,
+) -> Result<String, String> {
+    // First check if it's a derived account
+    let account_info: Option<u32> = {
+        let accounts = state.accounts.lock().unwrap();
+        accounts.iter()
+            .find(|a| a.address.to_lowercase() == address.to_lowercase())
+            .map(|a| a.index)
+    };
+
+    if let Some(index) = account_info {
+        // Derived account - get private key from mnemonic
+        let encrypted_mnemonic = state.encrypted_mnemonic.lock().unwrap()
+            .clone()
+            .ok_or("No wallet")?;
+        let mnemonic_phrase = decrypt_data(&encrypted_mnemonic, &password)?;
+        let wallet = derive_wallet_from_mnemonic(&mnemonic_phrase, index)?;
+
+        // Get the private key bytes and format as hex
+        let key_bytes = wallet.signer().to_bytes();
+        return Ok(format!("0x{}", hex::encode(key_bytes)));
+    }
+
+    // Check imported accounts
+    let imported = state.imported_accounts.lock().unwrap();
+    let imp_account = imported.iter()
+        .find(|a| a.address.to_lowercase() == address.to_lowercase())
+        .ok_or("Account not found")?
+        .clone();
+    drop(imported);
+
+    // Decrypt and return the private key
+    let private_key = decrypt_data(&imp_account.encrypted_private_key, &password)?;
+    Ok(format!("0x{}", private_key))
+}
+
+#[tauri::command]
 fn set_network(network: NetworkConfig, state: State<'_, WalletState>) {
     let mut net = state.network.lock().unwrap();
     *net = network;
@@ -541,6 +595,8 @@ pub fn run() {
             lock,
             get_network,
             set_network,
+            export_mnemonic,
+            export_private_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

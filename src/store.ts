@@ -42,6 +42,8 @@ interface WalletActions {
   sendTransaction: (to: string, amount: string) => Promise<string>;
   setNetwork: (network: NetworkConfig) => Promise<void>;
   setCurrentAddress: (address: string) => Promise<void>;
+  exportMnemonic: (password: string) => Promise<string>;
+  exportPrivateKey: (address: string, password: string) => Promise<string>;
 }
 
 export const useWalletStore = create<WalletState & WalletActions>((set, get) => ({
@@ -177,5 +179,13 @@ export const useWalletStore = create<WalletState & WalletActions>((set, get) => 
     await invoke('set_current_address', { address });
     set({ currentAddress: address });
     get().refreshBalance();
+  },
+
+  exportMnemonic: async (password) => {
+    return await invoke<string>('export_mnemonic', { password });
+  },
+
+  exportPrivateKey: async (address, password) => {
+    return await invoke<string>('export_private_key', { address, password });
   },
 }));
