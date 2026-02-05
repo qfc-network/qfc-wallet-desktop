@@ -4,14 +4,17 @@ import Home from './pages/Home';
 import CreateWallet from './pages/CreateWallet';
 import Unlock from './pages/Unlock';
 import Send from './pages/Send';
+import Receive from './pages/Receive';
 import Settings from './pages/Settings';
 import Accounts from './pages/Accounts';
+import AddressBook from './pages/AddressBook';
 
-type Page = 'home' | 'send' | 'receive' | 'settings' | 'accounts';
+type Page = 'home' | 'send' | 'receive' | 'settings' | 'accounts' | 'addressbook';
 
 export default function App() {
   const { isLoading, isUnlocked, hasWallet, initialize } = useWalletStore();
   const [page, setPage] = useState<Page>('home');
+  const [sendToAddress, setSendToAddress] = useState<string | null>(null);
 
   useEffect(() => {
     initialize();
@@ -37,7 +40,11 @@ export default function App() {
   }
 
   if (page === 'send') {
-    return <Send onBack={() => setPage('home')} />;
+    return <Send onBack={() => { setPage('home'); setSendToAddress(null); }} prefillAddress={sendToAddress} />;
+  }
+
+  if (page === 'receive') {
+    return <Receive onBack={() => setPage('home')} />;
   }
 
   if (page === 'settings') {
@@ -46,6 +53,18 @@ export default function App() {
 
   if (page === 'accounts') {
     return <Accounts onBack={() => setPage('home')} />;
+  }
+
+  if (page === 'addressbook') {
+    return (
+      <AddressBook
+        onBack={() => setPage('home')}
+        onSendTo={(address) => {
+          setSendToAddress(address);
+          setPage('send');
+        }}
+      />
+    );
   }
 
   return <Home onNavigate={setPage} />;

@@ -14,6 +14,14 @@ use rand::Rng;
 use bip39::{Mnemonic, Language};
 use hdwallet::{KeyChain, DefaultKeyChain, ExtendedPrivKey};
 
+// Contact in address book
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Contact {
+    pub id: String,
+    pub name: String,
+    pub address: String,
+}
+
 // Persistent wallet data (saved to disk)
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct WalletData {
@@ -23,6 +31,7 @@ pub struct WalletData {
     pub current_address: Option<String>,
     pub network: NetworkConfig,
     pub next_index: u32,
+    pub contacts: Vec<Contact>,
 }
 
 // Runtime wallet state
@@ -587,6 +596,76 @@ async fn send_transaction(
 }
 
 #[tauri::command]
+fn get_contacts(state: State<'_, WalletState>) -> Vec<Contact> {
+    state.data.lock().unwrap().contacts.clone()
+}
+
+#[tauri::command]
+fn add_contact(
+    name: String,
+    address: String,
+    state: State<'_, WalletState>,
+) -> Result<Contact, String> {
+    // Validate address format
+    if !address.starts_with("0x") || address.len() != 42 {
+        return Err("Invalid address format".to_string());
+    }
+
+    let id = format!("{:x}", rand::thread_rng().gen::<u64>());
+
+    let contact = Contact {
+        id: id.clone(),
+        name,
+        address,
+    };
+
+    {
+        let mut data = state.data.lock().unwrap();
+        data.contacts.push(contact.clone());
+    }
+
+    save_wallet_data(&state)?;
+    Ok(contact)
+}
+
+#[tauri::command]
+fn update_contact(
+    id: String,
+    name: String,
+    address: String,
+    state: State<'_, WalletState>,
+) -> Result<Contact, String> {
+    let mut data = state.data.lock().unwrap();
+
+    let contact = data.contacts.iter_mut()
+        .find(|c| c.id == id)
+        .ok_or("Contact not found")?;
+
+    contact.name = name;
+    contact.address = address;
+
+    let updated = contact.clone();
+    drop(data);
+
+    save_wallet_data(&state)?;
+    Ok(updated)
+}
+
+#[tauri::command]
+fn delete_contact(
+    id: String,
+    state: State<'_, WalletState>,
+) -> Result<(), String> {
+    {
+        let mut data = state.data.lock().unwrap();
+        data.contacts.retain(|c| c.id != id);
+    }
+
+    save_wallet_data(&state)?;
+    Ok(())
+}
+
+#[tauri::command]
 fn delete_wallet(state: State<'_, WalletState>) -> Result<(), String> {
     // Clear all data
     {
@@ -656,6 +735,10 @@ pub fn run() {
             set_network,
             export_mnemonic,
             export_private_key,
+            get_contacts,
+            add_contact,
+            update_contact,
+            delete_contact,
             delete_wallet,
         ])
         .run(tauri::generate_context!())

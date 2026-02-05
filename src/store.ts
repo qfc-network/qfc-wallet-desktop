@@ -20,6 +20,12 @@ interface CreateWalletResponse {
   address: string;
 }
 
+interface Contact {
+  id: string;
+  name: string;
+  address: string;
+}
+
 interface WalletState {
   isLoading: boolean;
   isUnlocked: boolean;
@@ -28,6 +34,7 @@ interface WalletState {
   currentAddress: string | null;
   balance: string;
   network: NetworkConfig;
+  contacts: Contact[];
 }
 
 interface WalletActions {
@@ -45,6 +52,10 @@ interface WalletActions {
   exportMnemonic: (password: string) => Promise<string>;
   exportPrivateKey: (address: string, password: string) => Promise<string>;
   deleteWallet: () => Promise<void>;
+  loadContacts: () => Promise<void>;
+  addContact: (name: string, address: string) => Promise<Contact>;
+  updateContact: (id: string, name: string, address: string) => Promise<Contact>;
+  deleteContact: (id: string) => Promise<void>;
 }
 
 export const useWalletStore = create<WalletState & WalletActions>((set, get) => ({
@@ -60,6 +71,7 @@ export const useWalletStore = create<WalletState & WalletActions>((set, get) => 
     rpc_url: 'http://127.0.0.1:8545',
     symbol: 'QFC',
   },
+  contacts: [],
 
   initialize: async () => {
     try {
@@ -68,6 +80,7 @@ export const useWalletStore = create<WalletState & WalletActions>((set, get) => 
       const isUnlocked = await invoke<boolean>('is_unlocked');
       const network = await invoke<NetworkConfig>('get_network');
       const accounts = await invoke<AccountInfo[]>('get_accounts');
+      const contacts = await invoke<Contact[]>('get_contacts');
 
       set({
         hasWallet,
@@ -75,6 +88,7 @@ export const useWalletStore = create<WalletState & WalletActions>((set, get) => 
         currentAddress,
         isUnlocked,
         network,
+        contacts,
         isLoading: false,
       });
 
@@ -198,6 +212,33 @@ export const useWalletStore = create<WalletState & WalletActions>((set, get) => 
       accounts: [],
       currentAddress: null,
       balance: '0',
+      contacts: [],
+    });
+  },
+
+  loadContacts: async () => {
+    const contacts = await invoke<Contact[]>('get_contacts');
+    set({ contacts });
+  },
+
+  addContact: async (name, address) => {
+    const contact = await invoke<Contact>('add_contact', { name, address });
+    set({ contacts: [...get().contacts, contact] });
+    return contact;
+  },
+
+  updateContact: async (id, name, address) => {
+    const contact = await invoke<Contact>('update_contact', { id, name, address });
+    set({
+      contacts: get().contacts.map(c => c.id === id ? contact : c),
+    });
+    return contact;
+  },
+
+  deleteContact: async (id) => {
+    await invoke('delete_contact', { id });
+    set({
+      contacts: get().contacts.filter(c => c.id !== id),
     });
   },
 }));

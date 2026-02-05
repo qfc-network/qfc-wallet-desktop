@@ -1,17 +1,17 @@
 import { useEffect } from 'react';
 import { useWalletStore } from '../store';
-import { RefreshCw, Send, Download, Lock, Copy, Check, Settings, Users } from 'lucide-react';
+import { RefreshCw, Send, Download, Lock, Copy, Check, Settings, Users, BookUser } from 'lucide-react';
 import { useState } from 'react';
-import { QRCodeSVG } from 'qrcode.react';
 
 interface HomeProps {
-  onNavigate: (page: 'home' | 'send' | 'receive' | 'settings' | 'accounts') => void;
+  onNavigate: (page: 'home' | 'send' | 'receive' | 'settings' | 'accounts' | 'addressbook') => void;
 }
 
 export default function Home({ onNavigate }: HomeProps) {
-  const { currentAddress, balance, network, refreshBalance, lock } = useWalletStore();
+  const { currentAddress, balance, network, refreshBalance, lock, accounts } = useWalletStore();
   const [copied, setCopied] = useState(false);
-  const [showReceive, setShowReceive] = useState(false);
+
+  const currentAccount = accounts.find(a => a.address === currentAddress);
 
   useEffect(() => {
     const interval = setInterval(refreshBalance, 10000);
@@ -30,37 +30,6 @@ export default function Home({ onNavigate }: HomeProps) {
     return `${addr.slice(0, 8)}...${addr.slice(-6)}`;
   };
 
-  if (showReceive) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-qfc-50 to-blue-50 p-4">
-        <div className="max-w-sm mx-auto">
-          <button
-            onClick={() => setShowReceive(false)}
-            className="mb-4 text-gray-600 hover:text-gray-800"
-          >
-            ← Back
-          </button>
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-xl font-semibold text-center mb-4">Receive QFC</h2>
-            <div className="flex justify-center mb-4">
-              <QRCodeSVG value={currentAddress || ''} size={200} />
-            </div>
-            <p className="text-xs text-gray-500 text-center break-all font-mono">
-              {currentAddress}
-            </p>
-            <button
-              onClick={copyAddress}
-              className="mt-4 w-full py-2 bg-qfc-500 text-white rounded-lg hover:bg-qfc-600 flex items-center justify-center gap-2"
-            >
-              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              {copied ? 'Copied!' : 'Copy Address'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-qfc-50 to-blue-50">
       {/* Header */}
@@ -70,16 +39,19 @@ export default function Home({ onNavigate }: HomeProps) {
           <span className="font-semibold">QFC Wallet</span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={refreshBalance} className="p-2 hover:bg-gray-100 rounded-lg">
+          <button onClick={refreshBalance} className="p-2 hover:bg-gray-100 rounded-lg" title="Refresh">
             <RefreshCw className="w-5 h-5 text-gray-600" />
           </button>
-          <button onClick={() => onNavigate('accounts')} className="p-2 hover:bg-gray-100 rounded-lg">
+          <button onClick={() => onNavigate('accounts')} className="p-2 hover:bg-gray-100 rounded-lg" title="Accounts">
             <Users className="w-5 h-5 text-gray-600" />
           </button>
-          <button onClick={() => onNavigate('settings')} className="p-2 hover:bg-gray-100 rounded-lg">
+          <button onClick={() => onNavigate('addressbook')} className="p-2 hover:bg-gray-100 rounded-lg" title="Address Book">
+            <BookUser className="w-5 h-5 text-gray-600" />
+          </button>
+          <button onClick={() => onNavigate('settings')} className="p-2 hover:bg-gray-100 rounded-lg" title="Settings">
             <Settings className="w-5 h-5 text-gray-600" />
           </button>
-          <button onClick={lock} className="p-2 hover:bg-gray-100 rounded-lg">
+          <button onClick={lock} className="p-2 hover:bg-gray-100 rounded-lg" title="Lock">
             <Lock className="w-5 h-5 text-gray-600" />
           </button>
         </div>
@@ -109,11 +81,12 @@ export default function Home({ onNavigate }: HomeProps) {
               className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 rounded-full text-sm hover:bg-white/30"
             >
               <Users className="w-3 h-3" />
-              {currentAddress && formatAddress(currentAddress)}
+              {currentAccount?.name || (currentAddress && formatAddress(currentAddress))}
             </button>
             <button
               onClick={copyAddress}
               className="p-1.5 bg-white/20 rounded-full hover:bg-white/30"
+              title="Copy address"
             >
               {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
             </button>
@@ -124,7 +97,7 @@ export default function Home({ onNavigate }: HomeProps) {
       {/* Actions */}
       <div className="px-4 py-4 grid grid-cols-2 gap-4">
         <button
-          onClick={() => setShowReceive(true)}
+          onClick={() => onNavigate('receive')}
           className="flex flex-col items-center gap-2 p-4 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow"
         >
           <div className="w-12 h-12 rounded-full bg-qfc-100 flex items-center justify-center">
@@ -143,7 +116,30 @@ export default function Home({ onNavigate }: HomeProps) {
         </button>
       </div>
 
-      {/* Info */}
+      {/* Quick Links */}
+      <div className="px-4 py-2">
+        <div className="bg-white rounded-xl p-4">
+          <h3 className="font-medium text-gray-800 mb-3">Quick Access</h3>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => onNavigate('accounts')}
+              className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <Users className="w-5 h-5 text-qfc-500" />
+              <span className="text-sm">Accounts</span>
+            </button>
+            <button
+              onClick={() => onNavigate('addressbook')}
+              className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <BookUser className="w-5 h-5 text-qfc-500" />
+              <span className="text-sm">Contacts</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Network Info */}
       <div className="px-4 py-2">
         <div className="bg-white rounded-xl p-4">
           <h3 className="font-medium text-gray-800 mb-2">Network Info</h3>
@@ -154,7 +150,7 @@ export default function Home({ onNavigate }: HomeProps) {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">RPC</span>
-              <span className="font-mono text-xs">{network.rpc_url}</span>
+              <span className="font-mono text-xs truncate max-w-[180px]">{network.rpc_url}</span>
             </div>
           </div>
         </div>

@@ -4,11 +4,12 @@ import { ArrowLeft, Check } from 'lucide-react';
 
 interface SendProps {
   onBack: () => void;
+  prefillAddress?: string | null;
 }
 
-export default function Send({ onBack }: SendProps) {
+export default function Send({ onBack, prefillAddress }: SendProps) {
   const { balance, network, sendTransaction } = useWalletStore();
-  const [to, setTo] = useState('');
+  const [to, setTo] = useState(prefillAddress || '');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
