@@ -14,6 +14,7 @@ A native desktop wallet for QFC blockchain built with Tauri 2 (Rust + React/Type
   - Zustand - State management
   - Tailwind CSS - Styling
   - Lucide React - Icons
+  - qrcode.react - QR code generation
 
 ## Project Structure
 
@@ -23,11 +24,13 @@ qfc-wallet-desktop/
 │   ├── App.tsx            # Main app with routing
 │   ├── store.ts           # Zustand state management
 │   └── pages/
-│       ├── Home.tsx       # Main wallet view (balance, send/receive)
+│       ├── Home.tsx       # Main wallet view (balance, quick access)
 │       ├── CreateWallet.tsx   # Wallet creation & import
 │       ├── Unlock.tsx     # Password unlock screen
 │       ├── Send.tsx       # Send QFC transaction
+│       ├── Receive.tsx    # Receive with QR code
 │       ├── Accounts.tsx   # Multi-account management
+│       ├── AddressBook.tsx # Contact management
 │       └── Settings.tsx   # Network & security settings
 ├── src-tauri/             # Rust backend
 │   ├── src/
@@ -46,6 +49,7 @@ qfc-wallet-desktop/
 - [x] Import wallet from mnemonic phrase
 - [x] AES-256-GCM encrypted key storage
 - [x] Password protection with lock/unlock
+- [x] **Persistent storage** - Wallet data saved to disk, survives restart
 
 ### Multi-Account Support
 - [x] Derive unlimited accounts from single mnemonic (path: m/44'/60'/0'/0/x)
@@ -59,16 +63,28 @@ qfc-wallet-desktop/
 - [x] Legacy transaction format (compatible with QFC node)
 - [x] Transaction hash display on success
 
+### Receive
+- [x] **QR code display** - Scan to get address
+- [x] Copy address to clipboard
+- [x] Share address (on supported platforms)
+
+### Address Book
+- [x] **Contact management** - Add, edit, delete contacts
+- [x] Quick send to contacts
+- [x] Persistent storage with wallet data
+
 ### Network
 - [x] Network selector (Local/Testnet/Mainnet)
 - [x] Custom RPC endpoint support
 - [x] Chain ID configuration
+- [x] Network settings persisted
 
 ### Security & Export
 - [x] Export recovery phrase (with password verification)
 - [x] Export private key for any account
 - [x] Hidden by default, eye toggle to reveal
 - [x] Copy to clipboard with warnings
+- [x] Delete wallet option
 
 ### UI/UX
 - [x] Clean, modern UI with gradient theme
@@ -76,14 +92,13 @@ qfc-wallet-desktop/
 - [x] Loading states and error handling
 - [x] Copy address to clipboard
 - [x] Max amount button (leaves gas reserve)
+- [x] Quick access section on home page
 
 ## Features TODO
 
 ### High Priority
-- [ ] Receive page with QR code
-- [ ] Transaction history
-- [ ] Token support (ERC-20)
-- [ ] Address book / contacts
+- [ ] Transaction history (requires blockchain indexer or scanning blocks)
+- [ ] Token support (ERC-20) - Need to add contract interaction
 
 ### Medium Priority
 - [ ] Biometric unlock (Touch ID / Face ID)
@@ -100,15 +115,24 @@ qfc-wallet-desktop/
 - [ ] Dark mode
 
 ### Technical Debt
-- [ ] Persistent wallet storage (currently in-memory, lost on restart)
 - [ ] Error boundary components
 - [ ] Unit tests for Rust commands
 - [ ] E2E tests
 
-## Known Issues
+## Implementation Notes
 
-1. **Wallet not persisted**: Wallet data is only in memory. Restarting the app requires re-importing.
-2. **No transaction history**: Only shows current balance, no past transactions.
+### Transaction History
+EVM chains don't have built-in transaction history API. Options:
+1. **Block scanning** - Scan recent blocks for transactions (slow, limited range)
+2. **External indexer** - Use Etherscan-like API (requires QFC indexer service)
+3. **Local tracking** - Store sent transactions locally (misses received)
+
+### Token Support (ERC-20)
+Need to implement:
+1. Token balance query via `balanceOf(address)` call
+2. Token transfer via `transfer(to, amount)` call
+3. Token list management (add/remove tokens)
+4. Approval flow for dApps
 
 ## Build & Run
 
@@ -122,6 +146,21 @@ npm run tauri dev
 # Build for production
 npm run tauri build
 ```
+
+## Data Storage
+
+Wallet data stored at:
+- macOS: `~/Library/Application Support/com.qfc.wallet-desktop/wallet.json`
+- Windows: `%APPDATA%/com.qfc.wallet-desktop/wallet.json`
+- Linux: `~/.config/com.qfc.wallet-desktop/wallet.json`
+
+Data includes (all sensitive data encrypted):
+- Encrypted mnemonic
+- Derived accounts (name, address, index)
+- Imported accounts (name, address, encrypted private key)
+- Contacts (name, address)
+- Network settings
+- Current address selection
 
 ## Important Notes
 
@@ -143,10 +182,12 @@ Standard Ethereum path: `m/44'/60'/0'/0/{index}`
 - Cipher: AES-256-GCM with random 12-byte nonce
 - Format: `hex(nonce || ciphertext)`
 
-## Git History
+## Git History (Recent)
 
+- `50574f3` - Add receive QR code, address book features
+- `11aa162` - Add wallet data persistence
+- `a072ed7` - Add CLAUDE.md with development notes
 - `9173b5d` - Add export functionality for mnemonic and private keys
 - `d46328b` - Use legacy transaction format for QFC node
 - `317864e` - Fix send transaction for HD wallet
 - `e36ee64` - Upgrade to HD wallet (BIP-39/BIP-44)
-- Earlier commits: Initial setup, multi-account, network selector
