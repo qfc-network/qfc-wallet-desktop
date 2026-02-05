@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Manager, State};
 use std::sync::Mutex;
+use std::fs;
+use std::path::PathBuf;
 use ethers::prelude::*;
 use ethers::signers::LocalWallet;
 use aes_gcm::{
@@ -12,15 +14,22 @@ use rand::Rng;
 use bip39::{Mnemonic, Language};
 use hdwallet::{KeyChain, DefaultKeyChain, ExtendedPrivKey};
 
-// Wallet state
+// Persistent wallet data (saved to disk)
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct WalletData {
+    pub encrypted_mnemonic: Option<String>,
+    pub accounts: Vec<Account>,
+    pub imported_accounts: Vec<ImportedAccount>,
+    pub current_address: Option<String>,
+    pub network: NetworkConfig,
+    pub next_index: u32,
+}
+
+// Runtime wallet state
 pub struct WalletState {
-    pub encrypted_mnemonic: Mutex<Option<String>>,
-    pub accounts: Mutex<Vec<Account>>,
-    pub imported_accounts: Mutex<Vec<ImportedAccount>>,
-    pub current_address: Mutex<Option<String>>,
+    pub data: Mutex<WalletData>,
     pub password: Mutex<Option<String>>,
-    pub network: Mutex<NetworkConfig>,
-    pub next_index: Mutex<u32>,
+    pub data_path: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -79,6 +88,37 @@ pub struct BalanceResponse {
 #[derive(Serialize)]
 pub struct TxResponse {
     pub hash: String,
+}
+
+// Persistence helpers
+fn get_wallet_file_path(data_path: &Option<PathBuf>) -> Option<PathBuf> {
+    data_path.as_ref().map(|p| p.join("wallet.json"))
+}
+
+fn save_wallet_data(state: &WalletState) -> Result<(), String> {
+    let data_path = state.data_path.lock().unwrap();
+    let file_path = get_wallet_file_path(&data_path)
+        .ok_or("Data path not set")?;
+
+    // Ensure directory exists
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let data = state.data.lock().unwrap();
+    let json = serde_json::to_string_pretty(&*data).map_err(|e| e.to_string())?;
+    fs::write(&file_path, json).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+fn load_wallet_data(file_path: &PathBuf) -> Option<WalletData> {
+    if file_path.exists() {
+        let content = fs::read_to_string(file_path).ok()?;
+        serde_json::from_str(&content).ok()
+    } else {
+        None
+    }
 }
 
 // Encryption helpers
@@ -162,11 +202,6 @@ fn create_wallet(
     // Encrypt and store mnemonic
     let encrypted_mnemonic = encrypt_data(&mnemonic_phrase, &password);
 
-    {
-        let mut enc_mn = state.encrypted_mnemonic.lock().unwrap();
-        *enc_mn = Some(encrypted_mnemonic);
-    }
-
     // Create first account
     let account = Account {
         name: "Account 1".to_string(),
@@ -175,21 +210,20 @@ fn create_wallet(
     };
 
     {
-        let mut accounts = state.accounts.lock().unwrap();
-        accounts.push(account);
-    }
-    {
-        let mut next_idx = state.next_index.lock().unwrap();
-        *next_idx = 1;
-    }
-    {
-        let mut current = state.current_address.lock().unwrap();
-        *current = Some(address.clone());
+        let mut data = state.data.lock().unwrap();
+        data.encrypted_mnemonic = Some(encrypted_mnemonic);
+        data.accounts = vec![account];
+        data.imported_accounts.clear();
+        data.next_index = 1;
+        data.current_address = Some(address.clone());
     }
     {
         let mut pwd = state.password.lock().unwrap();
         *pwd = Some(password);
     }
+
+    // Save to disk
+    save_wallet_data(&state)?;
 
     Ok(CreateWalletResponse {
         mnemonic: mnemonic_phrase,
@@ -214,11 +248,6 @@ fn import_mnemonic(
     // Encrypt and store mnemonic
     let encrypted_mnemonic = encrypt_data(&mnemonic_phrase, &password);
 
-    {
-        let mut enc_mn = state.encrypted_mnemonic.lock().unwrap();
-        *enc_mn = Some(encrypted_mnemonic);
-    }
-
     // Create first account
     let account = Account {
         name: "Account 1".to_string(),
@@ -227,26 +256,20 @@ fn import_mnemonic(
     };
 
     {
-        let mut accounts = state.accounts.lock().unwrap();
-        accounts.clear();
-        accounts.push(account);
-    }
-    {
-        let mut imported = state.imported_accounts.lock().unwrap();
-        imported.clear();
-    }
-    {
-        let mut next_idx = state.next_index.lock().unwrap();
-        *next_idx = 1;
-    }
-    {
-        let mut current = state.current_address.lock().unwrap();
-        *current = Some(address.clone());
+        let mut data = state.data.lock().unwrap();
+        data.encrypted_mnemonic = Some(encrypted_mnemonic);
+        data.accounts = vec![account];
+        data.imported_accounts.clear();
+        data.next_index = 1;
+        data.current_address = Some(address.clone());
     }
     {
         let mut pwd = state.password.lock().unwrap();
         *pwd = Some(password);
     }
+
+    // Save to disk
+    save_wallet_data(&state)?;
 
     Ok(address)
 }
@@ -260,19 +283,15 @@ fn derive_account(
         .clone()
         .ok_or("Wallet locked")?;
 
-    let encrypted_mnemonic = state.encrypted_mnemonic.lock().unwrap()
-        .clone()
-        .ok_or("No wallet created")?;
-
-    let mnemonic_phrase = decrypt_data(&encrypted_mnemonic, &password)?;
-
-    let index = {
-        let mut next_idx = state.next_index.lock().unwrap();
-        let idx = *next_idx;
-        *next_idx += 1;
-        idx
+    let (encrypted_mnemonic, index) = {
+        let mut data = state.data.lock().unwrap();
+        let enc_mn = data.encrypted_mnemonic.clone().ok_or("No wallet created")?;
+        let idx = data.next_index;
+        data.next_index += 1;
+        (enc_mn, idx)
     };
 
+    let mnemonic_phrase = decrypt_data(&encrypted_mnemonic, &password)?;
     let wallet = derive_wallet_from_mnemonic(&mnemonic_phrase, index)?;
     let address = format!("{:?}", wallet.address());
 
@@ -289,13 +308,13 @@ fn derive_account(
     };
 
     {
-        let mut accounts = state.accounts.lock().unwrap();
-        accounts.push(account.clone());
+        let mut data = state.data.lock().unwrap();
+        data.accounts.push(account.clone());
+        data.current_address = Some(address);
     }
-    {
-        let mut current = state.current_address.lock().unwrap();
-        *current = Some(address);
-    }
+
+    // Save to disk
+    save_wallet_data(&state)?;
 
     Ok(account)
 }
@@ -316,10 +335,13 @@ fn import_private_key(
 
     let encrypted_pk = encrypt_data(pk, &password);
 
-    let account_name = if name.is_empty() {
-        format!("Imported {}", state.imported_accounts.lock().unwrap().len() + 1)
-    } else {
-        name
+    let account_name = {
+        let data = state.data.lock().unwrap();
+        if name.is_empty() {
+            format!("Imported {}", data.imported_accounts.len() + 1)
+        } else {
+            name
+        }
     };
 
     let imported = ImportedAccount {
@@ -329,13 +351,13 @@ fn import_private_key(
     };
 
     {
-        let mut imported_accounts = state.imported_accounts.lock().unwrap();
-        imported_accounts.push(imported);
+        let mut data = state.data.lock().unwrap();
+        data.imported_accounts.push(imported);
+        data.current_address = Some(address.clone());
     }
-    {
-        let mut current = state.current_address.lock().unwrap();
-        *current = Some(address.clone());
-    }
+
+    // Save to disk
+    save_wallet_data(&state)?;
 
     Ok(AccountInfo {
         name: account_name,
@@ -347,17 +369,16 @@ fn import_private_key(
 
 #[tauri::command]
 fn get_accounts(state: State<'_, WalletState>) -> Vec<AccountInfo> {
-    let accounts = state.accounts.lock().unwrap();
-    let imported = state.imported_accounts.lock().unwrap();
+    let data = state.data.lock().unwrap();
 
-    let mut result: Vec<AccountInfo> = accounts.iter().map(|a| AccountInfo {
+    let mut result: Vec<AccountInfo> = data.accounts.iter().map(|a| AccountInfo {
         name: a.name.clone(),
         address: a.address.clone(),
         account_type: "derived".to_string(),
         index: Some(a.index),
     }).collect();
 
-    result.extend(imported.iter().map(|a| AccountInfo {
+    result.extend(data.imported_accounts.iter().map(|a| AccountInfo {
         name: a.name.clone(),
         address: a.address.clone(),
         account_type: "imported".to_string(),
@@ -369,18 +390,20 @@ fn get_accounts(state: State<'_, WalletState>) -> Vec<AccountInfo> {
 
 #[tauri::command]
 fn has_wallet(state: State<'_, WalletState>) -> bool {
-    state.encrypted_mnemonic.lock().unwrap().is_some()
+    state.data.lock().unwrap().encrypted_mnemonic.is_some()
 }
 
 #[tauri::command]
 fn get_current_address(state: State<'_, WalletState>) -> Option<String> {
-    state.current_address.lock().unwrap().clone()
+    state.data.lock().unwrap().current_address.clone()
 }
 
 #[tauri::command]
 fn set_current_address(address: String, state: State<'_, WalletState>) {
-    let mut current = state.current_address.lock().unwrap();
-    *current = Some(address);
+    let mut data = state.data.lock().unwrap();
+    data.current_address = Some(address);
+    drop(data);
+    let _ = save_wallet_data(&state);
 }
 
 #[tauri::command]
@@ -390,8 +413,8 @@ fn is_unlocked(state: State<'_, WalletState>) -> bool {
 
 #[tauri::command]
 fn unlock(password: String, state: State<'_, WalletState>) -> Result<bool, String> {
-    let encrypted_mnemonic = state.encrypted_mnemonic.lock().unwrap()
-        .clone()
+    let encrypted_mnemonic = state.data.lock().unwrap()
+        .encrypted_mnemonic.clone()
         .ok_or("No wallet created")?;
 
     // Verify password by trying to decrypt
@@ -410,7 +433,15 @@ fn lock(state: State<'_, WalletState>) {
 
 #[tauri::command]
 fn get_network(state: State<'_, WalletState>) -> NetworkConfig {
-    state.network.lock().unwrap().clone()
+    state.data.lock().unwrap().network.clone()
+}
+
+#[tauri::command]
+fn set_network(network: NetworkConfig, state: State<'_, WalletState>) {
+    let mut data = state.data.lock().unwrap();
+    data.network = network;
+    drop(data);
+    let _ = save_wallet_data(&state);
 }
 
 #[tauri::command]
@@ -418,8 +449,8 @@ fn export_mnemonic(
     password: String,
     state: State<'_, WalletState>,
 ) -> Result<String, String> {
-    let encrypted_mnemonic = state.encrypted_mnemonic.lock().unwrap()
-        .clone()
+    let encrypted_mnemonic = state.data.lock().unwrap()
+        .encrypted_mnemonic.clone()
         .ok_or("No wallet created")?;
 
     // Verify password and decrypt mnemonic
@@ -433,19 +464,18 @@ fn export_private_key(
     password: String,
     state: State<'_, WalletState>,
 ) -> Result<String, String> {
-    // First check if it's a derived account
-    let account_info: Option<u32> = {
-        let accounts = state.accounts.lock().unwrap();
-        accounts.iter()
-            .find(|a| a.address.to_lowercase() == address.to_lowercase())
-            .map(|a| a.index)
-    };
+    let data = state.data.lock().unwrap();
 
-    if let Some(index) = account_info {
+    // First check if it's a derived account
+    let account_index = data.accounts.iter()
+        .find(|a| a.address.to_lowercase() == address.to_lowercase())
+        .map(|a| a.index);
+
+    if let Some(index) = account_index {
         // Derived account - get private key from mnemonic
-        let encrypted_mnemonic = state.encrypted_mnemonic.lock().unwrap()
-            .clone()
-            .ok_or("No wallet")?;
+        let encrypted_mnemonic = data.encrypted_mnemonic.clone().ok_or("No wallet")?;
+        drop(data);
+
         let mnemonic_phrase = decrypt_data(&encrypted_mnemonic, &password)?;
         let wallet = derive_wallet_from_mnemonic(&mnemonic_phrase, index)?;
 
@@ -455,22 +485,15 @@ fn export_private_key(
     }
 
     // Check imported accounts
-    let imported = state.imported_accounts.lock().unwrap();
-    let imp_account = imported.iter()
+    let imp_account = data.imported_accounts.iter()
         .find(|a| a.address.to_lowercase() == address.to_lowercase())
         .ok_or("Account not found")?
         .clone();
-    drop(imported);
+    drop(data);
 
     // Decrypt and return the private key
     let private_key = decrypt_data(&imp_account.encrypted_private_key, &password)?;
     Ok(format!("0x{}", private_key))
-}
-
-#[tauri::command]
-fn set_network(network: NetworkConfig, state: State<'_, WalletState>) {
-    let mut net = state.network.lock().unwrap();
-    *net = network;
 }
 
 #[tauri::command]
@@ -479,7 +502,7 @@ async fn get_balance(
     state: State<'_, WalletState>,
 ) -> Result<BalanceResponse, String> {
     let network = {
-        state.network.lock().unwrap().clone()
+        state.data.lock().unwrap().network.clone()
     };
 
     let provider = Provider::<Http>::try_from(&network.rpc_url)
@@ -503,42 +526,38 @@ async fn send_transaction(
     state: State<'_, WalletState>,
 ) -> Result<TxResponse, String> {
     // Extract all needed data before any await points
-    // Get all data with locks released as soon as possible
     let password = state.password.lock().unwrap()
         .clone()
         .ok_or("Wallet locked")?;
 
-    let current_address = state.current_address.lock().unwrap()
-        .clone()
-        .ok_or("No account selected")?;
-
-    let network = state.network.lock().unwrap().clone();
-
-    // Find account info (clone data to release locks)
-    let account_info: Option<(u32, String)> = {
-        let accounts = state.accounts.lock().unwrap();
-        // Case-insensitive comparison for addresses
-        accounts.iter()
-            .find(|a| a.address.to_lowercase() == current_address.to_lowercase())
-            .map(|a| (a.index, "derived".to_string()))
+    let (current_address, network, accounts, imported_accounts, encrypted_mnemonic) = {
+        let data = state.data.lock().unwrap();
+        (
+            data.current_address.clone().ok_or("No account selected")?,
+            data.network.clone(),
+            data.accounts.clone(),
+            data.imported_accounts.clone(),
+            data.encrypted_mnemonic.clone(),
+        )
     };
 
-    let wallet = if let Some((index, _)) = account_info {
+    // Find account info
+    let account_index = accounts.iter()
+        .find(|a| a.address.to_lowercase() == current_address.to_lowercase())
+        .map(|a| a.index);
+
+    let wallet = if let Some(index) = account_index {
         // Derived account
-        let encrypted_mnemonic = state.encrypted_mnemonic.lock().unwrap()
-            .clone()
-            .ok_or("No wallet")?;
+        let encrypted_mnemonic = encrypted_mnemonic.ok_or("No wallet")?;
         let mnemonic_phrase = decrypt_data(&encrypted_mnemonic, &password)?;
         derive_wallet_from_mnemonic(&mnemonic_phrase, index)?
             .with_chain_id(network.chain_id)
     } else {
         // Check imported accounts
-        let imported = state.imported_accounts.lock().unwrap();
-        let imp_account = imported.iter()
+        let imp_account = imported_accounts.iter()
             .find(|a| a.address.to_lowercase() == current_address.to_lowercase())
             .ok_or("Account not found")?
             .clone();
-        drop(imported); // Release lock before decrypt
 
         let private_key = decrypt_data(&imp_account.encrypted_private_key, &password)?;
         private_key.parse::<LocalWallet>()
@@ -567,17 +586,57 @@ async fn send_transaction(
     Ok(TxResponse { hash })
 }
 
+#[tauri::command]
+fn delete_wallet(state: State<'_, WalletState>) -> Result<(), String> {
+    // Clear all data
+    {
+        let mut data = state.data.lock().unwrap();
+        *data = WalletData::default();
+    }
+    {
+        let mut pwd = state.password.lock().unwrap();
+        *pwd = None;
+    }
+
+    // Delete the wallet file
+    let data_path = state.data_path.lock().unwrap();
+    if let Some(file_path) = get_wallet_file_path(&data_path) {
+        if file_path.exists() {
+            fs::remove_file(&file_path).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(WalletState {
-            encrypted_mnemonic: Mutex::new(None),
-            accounts: Mutex::new(Vec::new()),
-            imported_accounts: Mutex::new(Vec::new()),
-            current_address: Mutex::new(None),
+            data: Mutex::new(WalletData::default()),
             password: Mutex::new(None),
-            network: Mutex::new(NetworkConfig::default()),
-            next_index: Mutex::new(0),
+            data_path: Mutex::new(None),
+        })
+        .setup(|app| {
+            // Get app data directory and load wallet
+            let app_handle = app.handle();
+            if let Some(data_dir) = app_handle.path().app_data_dir().ok() {
+                let wallet_file = data_dir.join("wallet.json");
+
+                // Load existing wallet data if available
+                if let Some(wallet_data) = load_wallet_data(&wallet_file) {
+                    let state = app.state::<WalletState>();
+                    let mut data = state.data.lock().unwrap();
+                    *data = wallet_data;
+                }
+
+                // Store the data path for later saves
+                let state = app.state::<WalletState>();
+                let mut path = state.data_path.lock().unwrap();
+                *path = Some(data_dir);
+            }
+
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             create_wallet,
@@ -597,6 +656,7 @@ pub fn run() {
             set_network,
             export_mnemonic,
             export_private_key,
+            delete_wallet,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

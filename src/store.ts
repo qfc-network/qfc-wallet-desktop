@@ -44,6 +44,7 @@ interface WalletActions {
   setCurrentAddress: (address: string) => Promise<void>;
   exportMnemonic: (password: string) => Promise<string>;
   exportPrivateKey: (address: string, password: string) => Promise<string>;
+  deleteWallet: () => Promise<void>;
 }
 
 export const useWalletStore = create<WalletState & WalletActions>((set, get) => ({
@@ -187,5 +188,16 @@ export const useWalletStore = create<WalletState & WalletActions>((set, get) => 
 
   exportPrivateKey: async (address, password) => {
     return await invoke<string>('export_private_key', { address, password });
+  },
+
+  deleteWallet: async () => {
+    await invoke('delete_wallet');
+    set({
+      hasWallet: false,
+      isUnlocked: false,
+      accounts: [],
+      currentAddress: null,
+      balance: '0',
+    });
   },
 }));
