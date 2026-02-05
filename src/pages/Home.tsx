@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
 import { useWalletStore } from '../store';
-import { RefreshCw, Send, Download, Lock, Copy, Check } from 'lucide-react';
+import { RefreshCw, Send, Download, Lock, Copy, Check, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface HomeProps {
-  onNavigate: (page: 'home' | 'send' | 'receive') => void;
+  onNavigate: (page: 'home' | 'send' | 'receive' | 'settings') => void;
 }
 
 export default function Home({ onNavigate }: HomeProps) {
@@ -73,6 +73,9 @@ export default function Home({ onNavigate }: HomeProps) {
           <button onClick={refreshBalance} className="p-2 hover:bg-gray-100 rounded-lg">
             <RefreshCw className="w-5 h-5 text-gray-600" />
           </button>
+          <button onClick={() => onNavigate('settings')} className="p-2 hover:bg-gray-100 rounded-lg">
+            <Settings className="w-5 h-5 text-gray-600" />
+          </button>
           <button onClick={lock} className="p-2 hover:bg-gray-100 rounded-lg">
             <Lock className="w-5 h-5 text-gray-600" />
           </button>
@@ -81,10 +84,13 @@ export default function Home({ onNavigate }: HomeProps) {
 
       {/* Network Badge */}
       <div className="px-4 py-2">
-        <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
+        <button
+          onClick={() => onNavigate('settings')}
+          className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm hover:bg-green-200 transition-colors"
+        >
           <span className="w-2 h-2 bg-green-500 rounded-full" />
           {network.name}
-        </span>
+        </button>
       </div>
 
       {/* Balance Card */}

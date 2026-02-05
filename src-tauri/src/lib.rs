@@ -291,7 +291,6 @@ fn set_network(network: NetworkConfig, state: State<'_, WalletState>) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_store::Builder::new().build())
         .manage(WalletState {
             wallets: Mutex::new(Vec::new()),
             current_address: Mutex::new(None),

@@ -4,8 +4,9 @@ import Home from './pages/Home';
 import CreateWallet from './pages/CreateWallet';
 import Unlock from './pages/Unlock';
 import Send from './pages/Send';
+import Settings from './pages/Settings';
 
-type Page = 'home' | 'send' | 'receive';
+type Page = 'home' | 'send' | 'receive' | 'settings';
 
 export default function App() {
   const { isLoading, isUnlocked, wallets, initialize } = useWalletStore();
@@ -36,6 +37,10 @@ export default function App() {
 
   if (page === 'send') {
     return <Send onBack={() => setPage('home')} />;
+  }
+
+  if (page === 'settings') {
+    return <Settings onBack={() => setPage('home')} />;
   }
 
   return <Home onNavigate={setPage} />;
