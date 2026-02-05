@@ -449,40 +449,47 @@ async fn send_transaction(
     state: State<'_, WalletState>,
 ) -> Result<TxResponse, String> {
     // Extract all needed data before any await points
-    let (wallet, network) = {
-        let password = state.password.lock().unwrap()
-            .clone()
-            .ok_or("Wallet locked")?;
+    // Get all data with locks released as soon as possible
+    let password = state.password.lock().unwrap()
+        .clone()
+        .ok_or("Wallet locked")?;
 
-        let current_address = state.current_address.lock().unwrap()
-            .clone()
-            .ok_or("No account selected")?;
+    let current_address = state.current_address.lock().unwrap()
+        .clone()
+        .ok_or("No account selected")?;
 
-        let network = state.network.lock().unwrap().clone();
+    let network = state.network.lock().unwrap().clone();
 
-        // Check if it's a derived account
+    // Find account info (clone data to release locks)
+    let account_info: Option<(u32, String)> = {
         let accounts = state.accounts.lock().unwrap();
-        if let Some(account) = accounts.iter().find(|a| a.address == current_address) {
-            let encrypted_mnemonic = state.encrypted_mnemonic.lock().unwrap()
-                .clone()
-                .ok_or("No wallet")?;
-            let mnemonic_phrase = decrypt_data(&encrypted_mnemonic, &password)?;
-            let wallet = derive_wallet_from_mnemonic(&mnemonic_phrase, account.index)?
-                .with_chain_id(network.chain_id);
-            (wallet, network)
-        } else {
-            // Check imported accounts
-            let imported = state.imported_accounts.lock().unwrap();
-            let imp_account = imported.iter()
-                .find(|a| a.address == current_address)
-                .ok_or("Account not found")?;
+        // Case-insensitive comparison for addresses
+        accounts.iter()
+            .find(|a| a.address.to_lowercase() == current_address.to_lowercase())
+            .map(|a| (a.index, "derived".to_string()))
+    };
 
-            let private_key = decrypt_data(&imp_account.encrypted_private_key, &password)?;
-            let wallet = private_key.parse::<LocalWallet>()
-                .map_err(|e: WalletError| e.to_string())?
-                .with_chain_id(network.chain_id);
-            (wallet, network)
-        }
+    let wallet = if let Some((index, _)) = account_info {
+        // Derived account
+        let encrypted_mnemonic = state.encrypted_mnemonic.lock().unwrap()
+            .clone()
+            .ok_or("No wallet")?;
+        let mnemonic_phrase = decrypt_data(&encrypted_mnemonic, &password)?;
+        derive_wallet_from_mnemonic(&mnemonic_phrase, index)?
+            .with_chain_id(network.chain_id)
+    } else {
+        // Check imported accounts
+        let imported = state.imported_accounts.lock().unwrap();
+        let imp_account = imported.iter()
+            .find(|a| a.address.to_lowercase() == current_address.to_lowercase())
+            .ok_or("Account not found")?
+            .clone();
+        drop(imported); // Release lock before decrypt
+
+        let private_key = decrypt_data(&imp_account.encrypted_private_key, &password)?;
+        private_key.parse::<LocalWallet>()
+            .map_err(|e: WalletError| e.to_string())?
+            .with_chain_id(network.chain_id)
     };
 
     let provider = Provider::<Http>::try_from(&network.rpc_url)

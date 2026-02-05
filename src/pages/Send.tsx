@@ -42,7 +42,8 @@ export default function Send({ onBack }: SendProps) {
       const hash = await sendTransaction(to, amount);
       setTxHash(hash);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Transaction failed');
+      console.error('Send transaction error:', e);
+      setError(typeof e === 'string' ? e : (e instanceof Error ? e.message : 'Transaction failed'));
     } finally {
       setLoading(false);
     }
