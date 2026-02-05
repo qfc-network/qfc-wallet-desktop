@@ -10,7 +10,7 @@ import Accounts from './pages/Accounts';
 type Page = 'home' | 'send' | 'receive' | 'settings' | 'accounts';
 
 export default function App() {
-  const { isLoading, isUnlocked, wallets, initialize } = useWalletStore();
+  const { isLoading, isUnlocked, hasWallet, initialize } = useWalletStore();
   const [page, setPage] = useState<Page>('home');
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export default function App() {
     );
   }
 
-  if (wallets.length === 0) {
+  if (!hasWallet) {
     return <CreateWallet />;
   }
 

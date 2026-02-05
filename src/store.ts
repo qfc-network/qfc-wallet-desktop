@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 
-interface WalletInfo {
+interface AccountInfo {
   name: string;
   address: string;
-  encrypted_private_key: string;
-  encrypted_mnemonic: string | null;
+  account_type: string; // "derived" or "imported"
+  index: number | null;
 }
 
 interface NetworkConfig {
@@ -15,10 +15,16 @@ interface NetworkConfig {
   symbol: string;
 }
 
+interface CreateWalletResponse {
+  mnemonic: string;
+  address: string;
+}
+
 interface WalletState {
   isLoading: boolean;
   isUnlocked: boolean;
-  wallets: WalletInfo[];
+  hasWallet: boolean;
+  accounts: AccountInfo[];
   currentAddress: string | null;
   balance: string;
   network: NetworkConfig;
@@ -26,8 +32,10 @@ interface WalletState {
 
 interface WalletActions {
   initialize: () => Promise<void>;
-  createWallet: (name: string, password: string) => Promise<void>;
-  importWallet: (name: string, privateKey: string, password: string) => Promise<void>;
+  createWallet: (password: string) => Promise<CreateWalletResponse>;
+  importMnemonic: (mnemonic: string, password: string) => Promise<string>;
+  deriveAccount: (name: string) => Promise<AccountInfo>;
+  importPrivateKey: (name: string, privateKey: string) => Promise<AccountInfo>;
   unlock: (password: string) => Promise<boolean>;
   lock: () => Promise<void>;
   refreshBalance: () => Promise<void>;
@@ -39,7 +47,8 @@ interface WalletActions {
 export const useWalletStore = create<WalletState & WalletActions>((set, get) => ({
   isLoading: true,
   isUnlocked: false,
-  wallets: [],
+  hasWallet: false,
+  accounts: [],
   currentAddress: null,
   balance: '0',
   network: {
@@ -51,13 +60,15 @@ export const useWalletStore = create<WalletState & WalletActions>((set, get) => 
 
   initialize: async () => {
     try {
-      const wallets = await invoke<WalletInfo[]>('get_wallets');
+      const hasWallet = await invoke<boolean>('has_wallet');
       const currentAddress = await invoke<string | null>('get_current_address');
       const isUnlocked = await invoke<boolean>('is_unlocked');
       const network = await invoke<NetworkConfig>('get_network');
+      const accounts = await invoke<AccountInfo[]>('get_accounts');
 
       set({
-        wallets,
+        hasWallet,
+        accounts,
         currentAddress,
         isUnlocked,
         network,
@@ -73,30 +84,59 @@ export const useWalletStore = create<WalletState & WalletActions>((set, get) => 
     }
   },
 
-  createWallet: async (name, password) => {
-    const wallet = await invoke<WalletInfo>('create_wallet', { name, password });
-    set((state) => ({
-      wallets: [...state.wallets, wallet],
-      currentAddress: wallet.address,
+  createWallet: async (password) => {
+    const result = await invoke<CreateWalletResponse>('create_wallet', { password });
+    const accounts = await invoke<AccountInfo[]>('get_accounts');
+    set({
+      hasWallet: true,
+      accounts,
+      currentAddress: result.address,
       isUnlocked: true,
-    }));
+    });
     get().refreshBalance();
+    return result;
   },
 
-  importWallet: async (name, privateKey, password) => {
-    const wallet = await invoke<WalletInfo>('import_wallet', { name, privateKey, password });
-    set((state) => ({
-      wallets: [...state.wallets, wallet],
-      currentAddress: wallet.address,
+  importMnemonic: async (mnemonicPhrase, password) => {
+    const address = await invoke<string>('import_mnemonic', { mnemonicPhrase, password });
+    const accounts = await invoke<AccountInfo[]>('get_accounts');
+    set({
+      hasWallet: true,
+      accounts,
+      currentAddress: address,
       isUnlocked: true,
-    }));
+    });
     get().refreshBalance();
+    return address;
+  },
+
+  deriveAccount: async (name) => {
+    const account = await invoke<AccountInfo>('derive_account', { name });
+    const accounts = await invoke<AccountInfo[]>('get_accounts');
+    set({
+      accounts,
+      currentAddress: account.address,
+    });
+    get().refreshBalance();
+    return account;
+  },
+
+  importPrivateKey: async (name, privateKey) => {
+    const account = await invoke<AccountInfo>('import_private_key', { name, privateKey });
+    const accounts = await invoke<AccountInfo[]>('get_accounts');
+    set({
+      accounts,
+      currentAddress: account.address,
+    });
+    get().refreshBalance();
+    return account;
   },
 
   unlock: async (password) => {
     const success = await invoke<boolean>('unlock', { password });
     if (success) {
-      set({ isUnlocked: true });
+      const accounts = await invoke<AccountInfo[]>('get_accounts');
+      set({ isUnlocked: true, accounts });
       get().refreshBalance();
     }
     return success;

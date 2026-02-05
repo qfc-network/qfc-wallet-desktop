@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { useWalletStore } from '../store';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Copy, Check, AlertTriangle } from 'lucide-react';
 
 export default function CreateWallet() {
-  const { createWallet, importWallet } = useWalletStore();
-  const [mode, setMode] = useState<'select' | 'create' | 'import'>('select');
-  const [name, setName] = useState('');
+  const { createWallet, importMnemonic } = useWalletStore();
+  const [mode, setMode] = useState<'select' | 'create' | 'import' | 'backup'>('select');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [privateKey, setPrivateKey] = useState('');
+  const [mnemonic, setMnemonic] = useState('');
+  const [inputMnemonic, setInputMnemonic] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
   const handleCreate = async () => {
     if (password !== confirmPassword) {
@@ -26,7 +28,9 @@ export default function CreateWallet() {
     setLoading(true);
     setError('');
     try {
-      await createWallet(name || 'My Wallet', password);
+      const result = await createWallet(password);
+      setMnemonic(result.mnemonic);
+      setMode('backup');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create wallet');
     } finally {
@@ -39,15 +43,16 @@ export default function CreateWallet() {
       setError('Password must be at least 6 characters');
       return;
     }
-    if (!privateKey) {
-      setError('Private key is required');
+    const words = inputMnemonic.trim().split(/\s+/);
+    if (words.length !== 12 && words.length !== 24) {
+      setError('Mnemonic must be 12 or 24 words');
       return;
     }
 
     setLoading(true);
     setError('');
     try {
-      await importWallet(name || 'Imported Wallet', privateKey, password);
+      await importMnemonic(inputMnemonic.trim(), password);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to import wallet');
     } finally {
@@ -55,6 +60,78 @@ export default function CreateWallet() {
     }
   };
 
+  const copyMnemonic = async () => {
+    await navigator.clipboard.writeText(mnemonic);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Backup confirmation screen
+  if (mode === 'backup') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-qfc-50 to-blue-50 p-4">
+        <div className="max-w-sm mx-auto">
+          <div className="bg-white rounded-2xl shadow-lg p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <AlertTriangle className="w-6 h-6 text-amber-500" />
+              <h2 className="text-xl font-semibold">Backup Recovery Phrase</h2>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Write down these 12 words in order. This is the ONLY way to recover your wallet if you lose access.
+            </p>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+              <div className="grid grid-cols-3 gap-2">
+                {mnemonic.split(' ').map((word, i) => (
+                  <div key={i} className="flex items-center gap-1 text-sm">
+                    <span className="text-gray-400 w-5">{i + 1}.</span>
+                    <span className="font-mono font-medium">{word}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={copyMnemonic}
+              className="w-full py-2 border border-gray-300 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-50 mb-4"
+            >
+              {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+              {copied ? 'Copied!' : 'Copy to Clipboard'}
+            </button>
+
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+              <p className="text-xs text-red-700">
+                <strong>Warning:</strong> Never share your recovery phrase. Anyone with these words can steal your funds.
+              </p>
+            </div>
+
+            <label className="flex items-start gap-2 mb-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+                className="mt-1"
+              />
+              <span className="text-sm text-gray-600">
+                I have written down my recovery phrase and stored it in a safe place.
+              </span>
+            </label>
+
+            <button
+              onClick={() => window.location.reload()}
+              disabled={!confirmed}
+              className="w-full py-3 bg-gradient-to-r from-qfc-500 to-blue-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              Continue to Wallet
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Selection screen
   if (mode === 'select') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-qfc-50 to-blue-50 flex flex-col items-center justify-center p-4">
@@ -73,13 +150,14 @@ export default function CreateWallet() {
             onClick={() => setMode('import')}
             className="w-full py-3 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors"
           >
-            Import Wallet
+            Import with Recovery Phrase
           </button>
         </div>
       </div>
     );
   }
 
+  // Create or Import form
   return (
     <div className="min-h-screen bg-gradient-to-br from-qfc-50 to-blue-50 p-4">
       <div className="max-w-sm mx-auto">
@@ -96,30 +174,17 @@ export default function CreateWallet() {
           </h2>
 
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Wallet Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="My Wallet"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-qfc-500 focus:border-transparent outline-none"
-              />
-            </div>
-
             {mode === 'import' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Private Key
+                  Recovery Phrase
                 </label>
-                <input
-                  type="password"
-                  value={privateKey}
-                  onChange={(e) => setPrivateKey(e.target.value)}
-                  placeholder="0x..."
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-qfc-500 focus:border-transparent outline-none font-mono text-sm"
+                <textarea
+                  value={inputMnemonic}
+                  onChange={(e) => setInputMnemonic(e.target.value)}
+                  placeholder="Enter your 12 or 24 word recovery phrase..."
+                  rows={3}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-qfc-500 focus:border-transparent outline-none font-mono text-sm resize-none"
                 />
               </div>
             )}
