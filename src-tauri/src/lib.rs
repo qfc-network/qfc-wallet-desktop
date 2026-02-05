@@ -578,21 +578,33 @@ async fn send_transaction(
     let provider = Provider::<Http>::try_from(&network.rpc_url)
         .map_err(|e| e.to_string())?;
 
-    let client = SignerMiddleware::new(provider, wallet);
-
     let to_addr: Address = to.parse().map_err(|e: <Address as std::str::FromStr>::Err| e.to_string())?;
     let value = ethers::utils::parse_ether(&amount).map_err(|e| e.to_string())?;
 
-    // Use legacy transaction format (not EIP-1559)
-    // Must use into() to convert to TypedTransaction::Legacy
-    let tx: TypedTransaction = TransactionRequest::new()
+    // Get nonce
+    let from_addr = wallet.address();
+    let nonce = provider.get_transaction_count(from_addr, None).await.map_err(|e| e.to_string())?;
+
+    // Build legacy transaction request
+    let tx = TransactionRequest::new()
         .to(to_addr)
         .value(value)
-        .gas(21000u64)  // Standard transfer gas
+        .gas(21000u64)
         .gas_price(1_000_000_000u64)  // 1 gwei
-        .into();
+        .nonce(nonce)
+        .chain_id(network.chain_id);
 
-    let pending_tx = client.send_transaction(tx, None).await.map_err(|e| e.to_string())?;
+    // Convert to TypedTransaction::Legacy explicitly
+    let typed_tx: TypedTransaction = tx.into();
+
+    // Sign the transaction
+    let signature = wallet.sign_transaction(&typed_tx).await.map_err(|e| e.to_string())?;
+
+    // Serialize the signed transaction (RLP encoded)
+    let signed_tx = typed_tx.rlp_signed(&signature);
+
+    // Send raw transaction
+    let pending_tx = provider.send_raw_transaction(signed_tx).await.map_err(|e| e.to_string())?;
     let hash = format!("{:?}", pending_tx.tx_hash());
 
     Ok(TxResponse { hash })
