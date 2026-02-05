@@ -500,9 +500,12 @@ async fn send_transaction(
     let to_addr: Address = to.parse().map_err(|e: <Address as std::str::FromStr>::Err| e.to_string())?;
     let value = ethers::utils::parse_ether(&amount).map_err(|e| e.to_string())?;
 
+    // Use legacy transaction format (not EIP-1559)
     let tx = TransactionRequest::new()
         .to(to_addr)
-        .value(value);
+        .value(value)
+        .gas(21000u64)  // Standard transfer gas
+        .gas_price(1_000_000_000u64);  // 1 gwei
 
     let pending_tx = client.send_transaction(tx, None).await.map_err(|e| e.to_string())?;
     let hash = format!("{:?}", pending_tx.tx_hash());
