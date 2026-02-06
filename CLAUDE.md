@@ -165,7 +165,18 @@ Data includes (all sensitive data encrypted):
 ## Important Notes
 
 ### Transaction Format
-QFC node uses legacy transactions (not EIP-1559). Must set `gas` and `gas_price` explicitly:
+QFC node now supports both:
+1. **Ethereum format** (RLP + secp256k1) - Used by ethers.js/ethers-rs wallets
+2. **QFC native format** (Borsh + Ed25519) - Original QFC format
+
+The desktop wallet uses ethers-rs which sends Ethereum-formatted transactions.
+The qfc-core RPC server (`eth_sendRawTransaction`) auto-detects the format:
+- First tries to decode as QFC native (Borsh)
+- Falls back to Ethereum format (RLP) if native fails
+- Recovers sender address from secp256k1 signature
+- Converts to internal QFC transaction format for execution
+
+Must use legacy transactions (not EIP-1559) and set `gas` and `gas_price` explicitly:
 ```rust
 let tx = TransactionRequest::new()
     .to(to_addr)

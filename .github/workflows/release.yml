@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Release (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri'
+          key: ${{ matrix.target }}
+
+      - name: Install system dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'QFC Wallet ${{ github.ref_name }}'
+          releaseBody: |
+            ## QFC Wallet Desktop ${{ github.ref_name }}
+
+            Download the appropriate installer for your platform:
+            - **macOS**: `.dmg` (Intel) or `.dmg` (Apple Silicon)
+            - **Windows**: `.msi` or `.exe`
+            - **Linux**: `.AppImage` or `.deb`
+
+            ### Installation
+
+            #### macOS
+            1. Download the `.dmg` file
+            2. Open the disk image
+            3. Drag QFC Wallet to Applications
+
+            #### Windows
+            1. Download the `.msi` installer
+            2. Run the installer
+            3. Follow the installation wizard
+
+            #### Linux
+            **AppImage:**
+            ```bash
+            chmod +x qfc-wallet-*.AppImage
+            ./qfc-wallet-*.AppImage
+            ```
+
+            **Debian/Ubuntu:**
+            ```bash
+            sudo dpkg -i qfc-wallet-*.deb
+            ```
+          releaseDraft: false
+          prerelease: false
+          args: --target ${{ matrix.target }}

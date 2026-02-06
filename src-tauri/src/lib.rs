@@ -585,23 +585,33 @@ async fn send_transaction(
     let from_addr = wallet.address();
     let nonce = provider.get_transaction_count(from_addr, None).await.map_err(|e| e.to_string())?;
 
-    // Build legacy transaction request
+    // Build legacy transaction request with all fields explicit
     let tx = TransactionRequest::new()
+        .from(from_addr)
         .to(to_addr)
         .value(value)
         .gas(21000u64)
         .gas_price(1_000_000_000u64)  // 1 gwei
         .nonce(nonce)
-        .chain_id(network.chain_id);
+        .chain_id(network.chain_id)
+        .data(vec![]);  // Empty data for simple transfer
 
-    // Convert to TypedTransaction::Legacy explicitly
+    // Convert to TypedTransaction::Legacy
     let typed_tx: TypedTransaction = tx.into();
 
-    // Sign the transaction
+    // Sign the transaction - this produces an EIP-155 signature
     let signature = wallet.sign_transaction(&typed_tx).await.map_err(|e| e.to_string())?;
 
-    // Serialize the signed transaction (RLP encoded)
+    // Get the RLP-encoded signed transaction
+    // For legacy transactions, rlp_signed should produce the correct format
     let signed_tx = typed_tx.rlp_signed(&signature);
+
+    // Debug: log the first few bytes to see the format
+    let bytes = signed_tx.to_vec();
+    if !bytes.is_empty() {
+        // Log first byte to verify it's not a type prefix (should be 0xf8 or 0xf9 for RLP list)
+        eprintln!("TX first byte: 0x{:02x}, length: {}", bytes[0], bytes.len());
+    }
 
     // Send raw transaction
     let pending_tx = provider.send_raw_transaction(signed_tx).await.map_err(|e| e.to_string())?;
