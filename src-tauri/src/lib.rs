@@ -8,7 +8,6 @@ use ethers::signers::LocalWallet;
 use ethers::types::transaction::eip2718::TypedTransaction;
 use hdwallet::{DefaultKeyChain, ExtendedPrivKey, KeyChain};
 use rand::Rng;
-use reqwest;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -830,7 +829,7 @@ pub fn run() {
         .setup(|app| {
             // Get app data directory and load wallet
             let app_handle = app.handle();
-            if let Some(data_dir) = app_handle.path().app_data_dir().ok() {
+            if let Ok(data_dir) = app_handle.path().app_data_dir() {
                 let wallet_file = data_dir.join("wallet.json");
 
                 // Load existing wallet data if available
