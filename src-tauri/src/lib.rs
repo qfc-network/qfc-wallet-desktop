@@ -1,20 +1,20 @@
-use serde::{Deserialize, Serialize};
-use tauri::{Manager, State};
-use std::sync::Mutex;
-use std::fs;
-use std::path::PathBuf;
-use ethers::prelude::*;
-use ethers::types::transaction::eip2718::TypedTransaction;
-use ethers::signers::LocalWallet;
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
-use sha2::{Sha256, Digest};
+use bip39::{Language, Mnemonic};
+use ethers::prelude::*;
+use ethers::signers::LocalWallet;
+use ethers::types::transaction::eip2718::TypedTransaction;
+use hdwallet::{DefaultKeyChain, ExtendedPrivKey, KeyChain};
 use rand::Rng;
-use bip39::{Mnemonic, Language};
-use hdwallet::{KeyChain, DefaultKeyChain, ExtendedPrivKey};
 use reqwest;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use tauri::{Manager, State};
 
 // Contact in address book
 #[derive(Clone, Serialize, Deserialize)]
@@ -146,8 +146,7 @@ fn get_wallet_file_path(data_path: &Option<PathBuf>) -> Option<PathBuf> {
 
 fn save_wallet_data(state: &WalletState) -> Result<(), String> {
     let data_path = state.data_path.lock().unwrap();
-    let file_path = get_wallet_file_path(&data_path)
-        .ok_or("Data path not set")?;
+    let file_path = get_wallet_file_path(&data_path).ok_or("Data path not set")?;
 
     // Ensure directory exists
     if let Some(parent) = file_path.parent() {
@@ -203,7 +202,8 @@ fn decrypt_data(encrypted: &str, password: &str) -> Result<String, String> {
     let (nonce_bytes, ciphertext) = data.split_at(12);
     let nonce = Nonce::from_slice(nonce_bytes);
 
-    let plaintext = cipher.decrypt(nonce, ciphertext)
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
         .map_err(|_| "Decryption failed - wrong password?")?;
 
     String::from_utf8(plaintext).map_err(|e| e.to_string())
@@ -223,7 +223,8 @@ fn derive_wallet_from_mnemonic(mnemonic_phrase: &str, index: u32) -> Result<Loca
 
     // BIP-44 path: m/44'/60'/0'/0/index
     let path = format!("m/44'/60'/0'/0/{}", index);
-    let (derived_key, _) = key_chain.derive_private_key(path.into())
+    let (derived_key, _) = key_chain
+        .derive_private_key(path.into())
         .map_err(|e| format!("Failed to derive key: {:?}", e))?;
 
     let key_bytes = derived_key.private_key.secret_bytes();
@@ -324,11 +325,11 @@ fn import_mnemonic(
 }
 
 #[tauri::command]
-fn derive_account(
-    name: String,
-    state: State<'_, WalletState>,
-) -> Result<Account, String> {
-    let password = state.password.lock().unwrap()
+fn derive_account(name: String, state: State<'_, WalletState>) -> Result<Account, String> {
+    let password = state
+        .password
+        .lock()
+        .unwrap()
         .clone()
         .ok_or("Wallet locked")?;
 
@@ -374,7 +375,10 @@ fn import_private_key(
     private_key: String,
     state: State<'_, WalletState>,
 ) -> Result<AccountInfo, String> {
-    let password = state.password.lock().unwrap()
+    let password = state
+        .password
+        .lock()
+        .unwrap()
         .clone()
         .ok_or("Wallet locked")?;
 
@@ -420,12 +424,16 @@ fn import_private_key(
 fn get_accounts(state: State<'_, WalletState>) -> Vec<AccountInfo> {
     let data = state.data.lock().unwrap();
 
-    let mut result: Vec<AccountInfo> = data.accounts.iter().map(|a| AccountInfo {
-        name: a.name.clone(),
-        address: a.address.clone(),
-        account_type: "derived".to_string(),
-        index: Some(a.index),
-    }).collect();
+    let mut result: Vec<AccountInfo> = data
+        .accounts
+        .iter()
+        .map(|a| AccountInfo {
+            name: a.name.clone(),
+            address: a.address.clone(),
+            account_type: "derived".to_string(),
+            index: Some(a.index),
+        })
+        .collect();
 
     result.extend(data.imported_accounts.iter().map(|a| AccountInfo {
         name: a.name.clone(),
@@ -462,8 +470,12 @@ fn is_unlocked(state: State<'_, WalletState>) -> bool {
 
 #[tauri::command]
 fn unlock(password: String, state: State<'_, WalletState>) -> Result<bool, String> {
-    let encrypted_mnemonic = state.data.lock().unwrap()
-        .encrypted_mnemonic.clone()
+    let encrypted_mnemonic = state
+        .data
+        .lock()
+        .unwrap()
+        .encrypted_mnemonic
+        .clone()
         .ok_or("No wallet created")?;
 
     // Verify password by trying to decrypt
@@ -494,12 +506,13 @@ fn set_network(network: NetworkConfig, state: State<'_, WalletState>) {
 }
 
 #[tauri::command]
-fn export_mnemonic(
-    password: String,
-    state: State<'_, WalletState>,
-) -> Result<String, String> {
-    let encrypted_mnemonic = state.data.lock().unwrap()
-        .encrypted_mnemonic.clone()
+fn export_mnemonic(password: String, state: State<'_, WalletState>) -> Result<String, String> {
+    let encrypted_mnemonic = state
+        .data
+        .lock()
+        .unwrap()
+        .encrypted_mnemonic
+        .clone()
         .ok_or("No wallet created")?;
 
     // Verify password and decrypt mnemonic
@@ -516,7 +529,9 @@ fn export_private_key(
     let data = state.data.lock().unwrap();
 
     // First check if it's a derived account
-    let account_index = data.accounts.iter()
+    let account_index = data
+        .accounts
+        .iter()
         .find(|a| a.address.to_lowercase() == address.to_lowercase())
         .map(|a| a.index);
 
@@ -534,7 +549,9 @@ fn export_private_key(
     }
 
     // Check imported accounts
-    let imp_account = data.imported_accounts.iter()
+    let imp_account = data
+        .imported_accounts
+        .iter()
         .find(|a| a.address.to_lowercase() == address.to_lowercase())
         .ok_or("Account not found")?
         .clone();
@@ -550,15 +567,17 @@ async fn get_balance(
     address: String,
     state: State<'_, WalletState>,
 ) -> Result<BalanceResponse, String> {
-    let network = {
-        state.data.lock().unwrap().network.clone()
-    };
+    let network = { state.data.lock().unwrap().network.clone() };
 
-    let provider = Provider::<Http>::try_from(&network.rpc_url)
+    let provider = Provider::<Http>::try_from(&network.rpc_url).map_err(|e| e.to_string())?;
+
+    let addr: Address = address
+        .parse()
+        .map_err(|e: <Address as std::str::FromStr>::Err| e.to_string())?;
+    let balance = provider
+        .get_balance(addr, None)
+        .await
         .map_err(|e| e.to_string())?;
-
-    let addr: Address = address.parse().map_err(|e: <Address as std::str::FromStr>::Err| e.to_string())?;
-    let balance = provider.get_balance(addr, None).await.map_err(|e| e.to_string())?;
 
     let formatted = ethers::utils::format_ether(balance);
 
@@ -575,7 +594,10 @@ async fn send_transaction(
     state: State<'_, WalletState>,
 ) -> Result<TxResponse, String> {
     // Extract all needed data before any await points
-    let password = state.password.lock().unwrap()
+    let password = state
+        .password
+        .lock()
+        .unwrap()
         .clone()
         .ok_or("Wallet locked")?;
 
@@ -591,7 +613,8 @@ async fn send_transaction(
     };
 
     // Find account info
-    let account_index = accounts.iter()
+    let account_index = accounts
+        .iter()
         .find(|a| a.address.to_lowercase() == current_address.to_lowercase())
         .map(|a| a.index);
 
@@ -599,30 +622,35 @@ async fn send_transaction(
         // Derived account
         let encrypted_mnemonic = encrypted_mnemonic.ok_or("No wallet")?;
         let mnemonic_phrase = decrypt_data(&encrypted_mnemonic, &password)?;
-        derive_wallet_from_mnemonic(&mnemonic_phrase, index)?
-            .with_chain_id(network.chain_id)
+        derive_wallet_from_mnemonic(&mnemonic_phrase, index)?.with_chain_id(network.chain_id)
     } else {
         // Check imported accounts
-        let imp_account = imported_accounts.iter()
+        let imp_account = imported_accounts
+            .iter()
             .find(|a| a.address.to_lowercase() == current_address.to_lowercase())
             .ok_or("Account not found")?
             .clone();
 
         let private_key = decrypt_data(&imp_account.encrypted_private_key, &password)?;
-        private_key.parse::<LocalWallet>()
+        private_key
+            .parse::<LocalWallet>()
             .map_err(|e: WalletError| e.to_string())?
             .with_chain_id(network.chain_id)
     };
 
-    let provider = Provider::<Http>::try_from(&network.rpc_url)
-        .map_err(|e| e.to_string())?;
+    let provider = Provider::<Http>::try_from(&network.rpc_url).map_err(|e| e.to_string())?;
 
-    let to_addr: Address = to.parse().map_err(|e: <Address as std::str::FromStr>::Err| e.to_string())?;
+    let to_addr: Address = to
+        .parse()
+        .map_err(|e: <Address as std::str::FromStr>::Err| e.to_string())?;
     let value = ethers::utils::parse_ether(&amount).map_err(|e| e.to_string())?;
 
     // Get nonce
     let from_addr = wallet.address();
-    let nonce = provider.get_transaction_count(from_addr, None).await.map_err(|e| e.to_string())?;
+    let nonce = provider
+        .get_transaction_count(from_addr, None)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Build legacy transaction request with all fields explicit
     let tx = TransactionRequest::new()
@@ -630,16 +658,19 @@ async fn send_transaction(
         .to(to_addr)
         .value(value)
         .gas(21000u64)
-        .gas_price(1_000_000_000u64)  // 1 gwei
+        .gas_price(1_000_000_000u64) // 1 gwei
         .nonce(nonce)
         .chain_id(network.chain_id)
-        .data(vec![]);  // Empty data for simple transfer
+        .data(vec![]); // Empty data for simple transfer
 
     // Convert to TypedTransaction::Legacy
     let typed_tx: TypedTransaction = tx.into();
 
     // Sign the transaction - this produces an EIP-155 signature
-    let signature = wallet.sign_transaction(&typed_tx).await.map_err(|e| e.to_string())?;
+    let signature = wallet
+        .sign_transaction(&typed_tx)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Get the RLP-encoded signed transaction
     // For legacy transactions, rlp_signed should produce the correct format
@@ -653,7 +684,10 @@ async fn send_transaction(
     }
 
     // Send raw transaction
-    let pending_tx = provider.send_raw_transaction(signed_tx).await.map_err(|e| e.to_string())?;
+    let pending_tx = provider
+        .send_raw_transaction(signed_tx)
+        .await
+        .map_err(|e| e.to_string())?;
     let hash = format!("{:?}", pending_tx.tx_hash());
 
     Ok(TxResponse { hash })
@@ -664,7 +698,11 @@ async fn get_transaction_history(
     address: String,
     explorer_url: String,
 ) -> Result<TransactionHistoryResponse, String> {
-    let url = format!("{}/api/address/{}?limit=50", explorer_url.trim_end_matches('/'), address);
+    let url = format!(
+        "{}/api/address/{}?limit=50",
+        explorer_url.trim_end_matches('/'),
+        address
+    );
 
     let client = reqwest::Client::new();
     let response = client
@@ -674,7 +712,9 @@ async fn get_transaction_history(
         .map_err(|e| format!("Failed to fetch transactions: {}", e))?;
 
     if !response.status().is_success() {
-        return Ok(TransactionHistoryResponse { transactions: vec![] });
+        return Ok(TransactionHistoryResponse {
+            transactions: vec![],
+        });
     }
 
     let api_response: ExplorerApiResponse = response
@@ -729,7 +769,9 @@ fn update_contact(
 ) -> Result<Contact, String> {
     let mut data = state.data.lock().unwrap();
 
-    let contact = data.contacts.iter_mut()
+    let contact = data
+        .contacts
+        .iter_mut()
         .find(|c| c.id == id)
         .ok_or("Contact not found")?;
 
@@ -744,10 +786,7 @@ fn update_contact(
 }
 
 #[tauri::command]
-fn delete_contact(
-    id: String,
-    state: State<'_, WalletState>,
-) -> Result<(), String> {
+fn delete_contact(id: String, state: State<'_, WalletState>) -> Result<(), String> {
     {
         let mut data = state.data.lock().unwrap();
         data.contacts.retain(|c| c.id != id);
