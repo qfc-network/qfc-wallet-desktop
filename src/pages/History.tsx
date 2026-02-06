@@ -5,14 +5,14 @@ import { ArrowLeft, ArrowUpRight, ArrowDownLeft, RefreshCw, ExternalLink } from 
 
 interface Transaction {
   hash: string;
-  block_height: number;
+  block_height: string;
   from_address: string;
   to_address: string | null;
   value: string;
-  gas_used: string;
-  gas_price: string;
+  gas_used?: string;
+  gas_price?: string;
   status: string;
-  timestamp_ms: string;
+  timestamp_ms?: string;
 }
 
 interface HistoryProps {
@@ -176,7 +176,7 @@ export default function History({ onBack }: HistoryProps) {
                       </div>
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-xs text-gray-400">
-                          {formatTimestamp(tx.timestamp_ms)}
+                          {tx.timestamp_ms ? formatTimestamp(tx.timestamp_ms) : `Block #${tx.block_height}`}
                         </span>
                         <a
                           href={`${EXPLORER_URL}/txs/${tx.hash}`}

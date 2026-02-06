@@ -105,23 +105,32 @@ pub struct TxResponse {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Transaction {
     pub hash: String,
-    pub block_height: u64,
+    #[serde(default)]
+    pub block_height: String,
     pub from_address: String,
+    #[serde(default)]
     pub to_address: Option<String>,
+    #[serde(default)]
     pub value: String,
-    pub gas_used: String,
-    pub gas_price: String,
+    #[serde(default)]
+    pub gas_used: Option<String>,
+    #[serde(default)]
+    pub gas_price: Option<String>,
+    #[serde(default)]
     pub status: String,
-    pub timestamp_ms: String,
+    #[serde(default)]
+    pub timestamp_ms: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ExplorerApiResponse {
+    ok: bool,
     data: ExplorerData,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ExplorerData {
+    #[serde(default)]
     transactions: Vec<Transaction>,
 }
 
