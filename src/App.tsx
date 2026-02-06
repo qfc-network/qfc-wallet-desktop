@@ -8,8 +8,9 @@ import Receive from './pages/Receive';
 import Settings from './pages/Settings';
 import Accounts from './pages/Accounts';
 import AddressBook from './pages/AddressBook';
+import History from './pages/History';
 
-type Page = 'home' | 'send' | 'receive' | 'settings' | 'accounts' | 'addressbook';
+type Page = 'home' | 'send' | 'receive' | 'settings' | 'accounts' | 'addressbook' | 'history';
 
 export default function App() {
   const { isLoading, isUnlocked, hasWallet, initialize } = useWalletStore();
@@ -65,6 +66,10 @@ export default function App() {
         }}
       />
     );
+  }
+
+  if (page === 'history') {
+    return <History onBack={() => setPage('home')} />;
   }
 
   return <Home onNavigate={setPage} />;

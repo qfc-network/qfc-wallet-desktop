@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { useWalletStore } from '../store';
-import { RefreshCw, Send, Download, Lock, Copy, Check, Settings, Users, BookUser } from 'lucide-react';
+import { RefreshCw, Send, Download, Lock, Copy, Check, Settings, Users, BookUser, History } from 'lucide-react';
 import { useState } from 'react';
 
 interface HomeProps {
-  onNavigate: (page: 'home' | 'send' | 'receive' | 'settings' | 'accounts' | 'addressbook') => void;
+  onNavigate: (page: 'home' | 'send' | 'receive' | 'settings' | 'accounts' | 'addressbook' | 'history') => void;
 }
 
 export default function Home({ onNavigate }: HomeProps) {
@@ -41,6 +41,9 @@ export default function Home({ onNavigate }: HomeProps) {
         <div className="flex items-center gap-2">
           <button onClick={refreshBalance} className="p-2 hover:bg-gray-100 rounded-lg" title="Refresh">
             <RefreshCw className="w-5 h-5 text-gray-600" />
+          </button>
+          <button onClick={() => onNavigate('history')} className="p-2 hover:bg-gray-100 rounded-lg" title="History">
+            <History className="w-5 h-5 text-gray-600" />
           </button>
           <button onClick={() => onNavigate('accounts')} className="p-2 hover:bg-gray-100 rounded-lg" title="Accounts">
             <Users className="w-5 h-5 text-gray-600" />
@@ -120,7 +123,14 @@ export default function Home({ onNavigate }: HomeProps) {
       <div className="px-4 py-2">
         <div className="bg-white rounded-xl p-4">
           <h3 className="font-medium text-gray-800 mb-3">Quick Access</h3>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={() => onNavigate('history')}
+              className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <History className="w-5 h-5 text-qfc-500" />
+              <span className="text-sm">History</span>
+            </button>
             <button
               onClick={() => onNavigate('accounts')}
               className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"

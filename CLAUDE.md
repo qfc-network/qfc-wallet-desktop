@@ -29,6 +29,7 @@ qfc-wallet-desktop/
 │       ├── Unlock.tsx     # Password unlock screen
 │       ├── Send.tsx       # Send QFC transaction
 │       ├── Receive.tsx    # Receive with QR code
+│       ├── History.tsx    # Transaction history from explorer
 │       ├── Accounts.tsx   # Multi-account management
 │       ├── AddressBook.tsx # Contact management
 │       └── Settings.tsx   # Network & security settings
@@ -62,6 +63,7 @@ qfc-wallet-desktop/
 - [x] Send QFC with address validation
 - [x] Legacy transaction format (compatible with QFC node)
 - [x] Transaction hash display on success
+- [x] **Transaction history** - View sent/received transactions from explorer API
 
 ### Receive
 - [x] **QR code display** - Scan to get address
@@ -97,7 +99,7 @@ qfc-wallet-desktop/
 ## Features TODO
 
 ### High Priority
-- [ ] Transaction history (requires blockchain indexer or scanning blocks)
+- [x] Transaction history - Uses qfc-explorer API
 - [ ] Token support (ERC-20) - Need to add contract interaction
 
 ### Medium Priority
@@ -122,10 +124,10 @@ qfc-wallet-desktop/
 ## Implementation Notes
 
 ### Transaction History
-EVM chains don't have built-in transaction history API. Options:
-1. **Block scanning** - Scan recent blocks for transactions (slow, limited range)
-2. **External indexer** - Use Etherscan-like API (requires QFC indexer service)
-3. **Local tracking** - Store sent transactions locally (misses received)
+Uses the qfc-explorer API at `/api/address/{address}` to fetch transaction history.
+- Requires qfc-explorer running at http://localhost:3000
+- Shows both sent and received transactions
+- Displays amount, status, timestamp, and links to explorer
 
 ### Token Support (ERC-20)
 Need to implement:

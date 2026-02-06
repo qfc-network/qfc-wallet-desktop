@@ -14,6 +14,7 @@ use sha2::{Sha256, Digest};
 use rand::Rng;
 use bip39::{Mnemonic, Language};
 use hdwallet::{KeyChain, DefaultKeyChain, ExtendedPrivKey};
+use reqwest;
 
 // Contact in address book
 #[derive(Clone, Serialize, Deserialize)]
@@ -98,6 +99,35 @@ pub struct BalanceResponse {
 #[derive(Serialize)]
 pub struct TxResponse {
     pub hash: String,
+}
+
+// Transaction history types
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct Transaction {
+    pub hash: String,
+    pub block_height: u64,
+    pub from_address: String,
+    pub to_address: Option<String>,
+    pub value: String,
+    pub gas_used: String,
+    pub gas_price: String,
+    pub status: String,
+    pub timestamp_ms: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ExplorerApiResponse {
+    data: ExplorerData,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ExplorerData {
+    transactions: Vec<Transaction>,
+}
+
+#[derive(Serialize)]
+pub struct TransactionHistoryResponse {
+    pub transactions: Vec<Transaction>,
 }
 
 // Persistence helpers
@@ -621,6 +651,34 @@ async fn send_transaction(
 }
 
 #[tauri::command]
+async fn get_transaction_history(
+    address: String,
+    explorer_url: String,
+) -> Result<TransactionHistoryResponse, String> {
+    let url = format!("{}/api/address/{}?limit=50", explorer_url.trim_end_matches('/'), address);
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch transactions: {}", e))?;
+
+    if !response.status().is_success() {
+        return Ok(TransactionHistoryResponse { transactions: vec![] });
+    }
+
+    let api_response: ExplorerApiResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+    Ok(TransactionHistoryResponse {
+        transactions: api_response.data.transactions,
+    })
+}
+
+#[tauri::command]
 fn get_contacts(state: State<'_, WalletState>) -> Vec<Contact> {
     state.data.lock().unwrap().contacts.clone()
 }
@@ -751,6 +809,7 @@ pub fn run() {
             has_wallet,
             get_balance,
             send_transaction,
+            get_transaction_history,
             get_current_address,
             set_current_address,
             is_unlocked,
